@@ -1,106 +1,101 @@
 pipeline {
-    agent {
-        docker {
-            image 'jibin321/maven-docker-agent:v2'
-            args '--user root -v /var/run/docker.sock:/var/run/docker.sock'
-        }
+  agent {
+    docker {
+      image 'jibin321/maven-docker-agent:v2'
+      args '--user root -v /var/run/docker.sock:/var/run/docker.sock' // mount Docker socket to access the host's Docker daemon
+    }
+  }
+
+//adding enviornment
+
+ environment {
+        DOCKER_IMAGE = "alanjose2929/spring-boot-app"
+        GIT_REPO_NAME = "java-maven-sonar-argocd"
+        GIT_USER_NAME = "AlanJose2712"
+}
+
+  stages {
+    stage('Checkout') {
+      steps {
+        sh 'echo passed'
+        //git branch: 'main', url: 'https://github.com/user/repo.git'
+      }
+    }
+    stage('Build and Test') {
+      steps {
+        sh 'ls -ltr'
+        // build the project and create a JAR file
+        sh 'cd spring-boot-app && mvn clean package'
+      }
     }
 
-    stages {
+// edited sonarqube
 
-        stage('Checkout') {
-            steps {
-                sh 'echo passed'
-                // git branch: 'main', url: 'https://github.com/user/repo.git'
-            }
-        }
-
-        stage('Build and Test') {
-            steps {
-                sh 'ls -ltr'
-
+   stage('SonarQube Analysis') {
+    steps {
+        dir('spring-boot-app') {
+            withSonarQubeEnv('sonarqube') {
                 sh '''
-                    cd spring-boot-app
-                    mvn clean package
+                    mvn org.sonarsource.scanner.maven:sonar-maven-plugin:sonar \
+                      -Dsonar.projectKey=springboot-gitops-app \
+                      -Dsonar.projectName="Springboot GitOps App"
                 '''
             }
         }
+    }
+}
 
-        stage('SonarQube Analysis') {
-            steps {
-                withSonarQubeEnv('sonarqube') {
-                    sh '''
-                        cd spring-boot-app
+    stage('Build and Push Docker Image') {
+      steps {
+        script {
+          sh 'docker build -t ${DOCKER_IMAGE}:${BUILD_NUMBER} ./spring-boot-app' // edited location / path
 
-                        mvn org.sonarsource.scanner.maven:sonar-maven-plugin:5.1.0.4751:sonar \
-                        -Dsonar.projectKey=my-ec2-project \
-                        -Dsonar.projectName="Spring Boot App" \
-                        -Dsonar.host.url=$SONAR_HOST_URL
-                    '''
-                }
-            }
+          def dockerImage = docker.image("${DOCKER_IMAGE}:${BUILD_NUMBER}")
+          docker.withRegistry('https://index.docker.io/v1/', 'docker-cred') {
+            dockerImage.push()
+            dockerImage.push("latest")
+          }
         }
+      }
+    }
 
-        stage('Build and Push Docker Image') {
-            environment {
-                DOCKER_IMAGE = "alanjose2929/spring-boot-app:${BUILD_NUMBER}"
-            }
+   stage('Update Deployment File') {
+    environment {
+        GIT_REPO_NAME = "java-maven-sonar-argocd"
+        GIT_USER_NAME = "AlanJose2712"
+    }
 
-            steps {
-                script {
+    steps {
+        withCredentials([
+            usernamePassword(
+                credentialsId: 'github',
+                usernameVariable: 'GITHUB_USERNAME',
+                passwordVariable: 'GITHUB_TOKEN'
+            )
+        ]) {
+            sh '''
+                git config --global --add safe.directory "$WORKSPACE"
 
-                    sh 'docker build -t ${DOCKER_IMAGE} spring-boot-app'
+                git config user.email "alanjosep4949@gmail.com"
+                git config user.name "${GIT_USER_NAME}"
 
-                    def dockerImage = docker.image("${DOCKER_IMAGE}")
+                sed -i "s|image: .*|image: alanjose2929/spring-boot-app:${BUILD_NUMBER}|g" spring-boot-app-manifests/deployment.yml
 
-                    docker.withRegistry(
-                        'https://index.docker.io/v1/',
-                        'docker-cred'
-                    ) {
-                        dockerImage.push()
-                        dockerImage.push('latest')
-                    }
-                }
-            }
-        }
+                git add spring-boot-app-manifests/deployment.yml
 
-        stage('Update Deployment File') {
-            environment {
-                GIT_REPO_NAME = "java-maven-sonar-argocd"
-                GIT_USER_NAME = "AlanJose2712"
-            }
+                git commit -m "Update Spring Boot image tag to ${BUILD_NUMBER} [skip ci]" || true
 
-            steps {
-                withCredentials([
-                    usernamePassword(
-                        credentialsId: 'github',
-                        usernameVariable: 'GITHUB_USERNAME',
-                        passwordVariable: 'GITHUB_TOKEN'
-                    )
-                ]) {
+                git remote set-url origin https://${GITHUB_USERNAME}:${GITHUB_TOKEN}@github.com/${GIT_USER_NAME}/${GIT_REPO_NAME}.git
 
-                    sh '''
-                        rm -rf gitops-repo
-
-                        git clone https://${GITHUB_USERNAME}:${GITHUB_TOKEN}@github.com/${GIT_USER_NAME}/${GIT_REPO_NAME}.git gitops-repo
-
-                        cd gitops-repo
-
-                        git config user.email "alanjosep4949@gmail.com"
-                        git config user.name "${GIT_USER_NAME}"
-
-                        sed -i "s|image: .*|image: alanjose2929/spring-boot-app:${BUILD_NUMBER}|g" spring-boot-app-manifests/deployment.yml
-
-                        git add spring-boot-app-manifests/deployment.yml
-
-                        git commit \
-                            -m "Update Spring Boot image tag to ${BUILD_NUMBER} [skip ci]" \
-                            || echo "No changes to commit"
-
-                        git push origin HEAD:main
-                    '''
-                }
-            }
+                git push origin HEAD:main
+            '''
         }
     }
+}   }
+
+  post {
+    always {
+      cleanWs()
+    }
+  }
 }
