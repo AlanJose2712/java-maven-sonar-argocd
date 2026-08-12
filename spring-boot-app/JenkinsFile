@@ -9,7 +9,7 @@ pipeline {
 //adding enviornment
 
  environment {
-        DOCKER_IMAGE = "alanjose2929/spring-boot-app"
+        DOCKER_IMAGE = "alanjose2929/springboot-app"
         GIT_REPO_NAME = "java-maven-sonar-argocd"
         GIT_USER_NAME = "AlanJose2712"
 }
@@ -60,39 +60,32 @@ pipeline {
     }
 
    stage('Update Deployment File') {
-    environment {
-        GIT_REPO_NAME = "java-maven-sonar-argocd"
-        GIT_USER_NAME = "AlanJose2712"
-    }
-
     steps {
-        withCredentials([
-            usernamePassword(
-                credentialsId: 'github',
-                usernameVariable: 'GITHUB_USERNAME',
-                passwordVariable: 'GITHUB_TOKEN'
-            )
-        ]) {
+        withCredentials([usernamePassword(
+            credentialsId: 'git-hub',
+            usernameVariable: 'GITHUB_USERNAME',
+            passwordVariable: 'GITHUB_TOKEN'
+        )]) {
             sh '''
                 git config --global --add safe.directory "$WORKSPACE"
 
                 git config user.email "alanjosep4949@gmail.com"
-                git config user.name "${GIT_USER_NAME}"
+                git config user.name "AlanJose2712"
 
-                sed -i "s|image: .*|image: alanjose2929/spring-boot-app:${BUILD_NUMBER}|g" spring-boot-app-manifests/deployment.yml
+                sed -i "s|image: .*|image: alanjose2929/springboot-app:${BUILD_NUMBER}|g" spring-boot-app-manifests/deployment.yml
 
                 git add spring-boot-app-manifests/deployment.yml
 
-                git commit -m "Update Spring Boot image tag to ${BUILD_NUMBER} [skip ci]" || true
+                git commit -m "Update springboot app image tag to ${BUILD_NUMBER} [skip ci]" || true
 
-                git remote set-url origin https://${GITHUB_USERNAME}:${GITHUB_TOKEN}@github.com/${GIT_USER_NAME}/${GIT_REPO_NAME}.git
+                git remote set-url origin https://${GITHUB_USERNAME}:${GITHUB_TOKEN}@github.com/AlanJose2712/java-maven-sonar-argocd.git
 
                 git push origin HEAD:main
             '''
         }
     }
-}
-}
+}   }
+
   post {
     always {
       cleanWs()
