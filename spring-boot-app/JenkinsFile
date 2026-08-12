@@ -68,7 +68,7 @@ pipeline {
     steps {
         withCredentials([
             usernamePassword(
-                credentialsId: 'github-token',
+                credentialsId: 'github',
                 usernameVariable: 'GITHUB_USERNAME',
                 passwordVariable: 'GITHUB_TOKEN'
             )
@@ -91,7 +91,7 @@ pipeline {
             '''
         }
     }
-}   }
+}
 
   post {
     always {
